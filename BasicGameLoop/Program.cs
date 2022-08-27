@@ -1,17 +1,24 @@
-namespace BasicGameLoop
+using System.Numerics;
+
+namespace BasicGameLoop;
+
+static class Program
 {
-    internal static class Program
+    /// <summary>
+    ///  The main entry point for the application.
+    /// </summary>
+    [STAThread]
+    static void Main()
     {
-        /// <summary>
-        ///  The main entry point for the application.
-        /// </summary>
-        [STAThread]
-        static void Main()
+#if !DEBUG
+        if (!Vector.IsHardwareAccelerated)
+            return;
+#endif
+
+        Game game = new()
         {
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
-            ApplicationConfiguration.Initialize();
-            Application.Run(new Form1());
-        }
+            AppName = "Test"
+        };
+        Application.Run(new GameForm(game));
     }
 }
