@@ -8,16 +8,14 @@ using Vortice.Direct3D11;
 
 namespace BasicGameLoop
 {
-    class Game : IDeviceNotify
+    class Game : IDeviceNotify, IDisposable
     {
         private readonly DeviceResources _deviceResources;
         private readonly StepTimer _timer;
 
         private bool _initialized;
 
-        public string AppName { get; set; }
-
-        public Game()
+        public Game(string title)
         {
             _deviceResources = new DeviceResources();
             // TODO: Provide parameters for swapchain format, depth/stencil format, and backbuffer count.
@@ -25,10 +23,17 @@ namespace BasicGameLoop
             //   Add DeviceResourcesOptions.EnableHDR for HDR10 display.
             _deviceResources.RegisterDeviceNotify(this);
 
-            _timer = new StepTimer();
+            _timer = new StepTimer
+            {
+                Update = Update
+            };
+
+            Title = title;
         }
 
+        public string Title { get; private set; }
         public Size DefaultSize => new(800, 600);
+        public Action ExitGame { get; set; }
 
         // Initialize the Direct3D resources required to run
         public void Initialize(IntPtr window, int width, int height, Rectangle bounds)
@@ -54,7 +59,7 @@ namespace BasicGameLoop
         // Executes the basic game loop
         public void Tick()
         {
-            _timer.Tick(Update);
+            _timer.Tick();
 
             Render();
         }
@@ -189,5 +194,40 @@ namespace BasicGameLoop
         #endregion
 
         private static Vortice.Mathematics.Color FromSystemDrawingColor(Color color) => new(color.R, color.G, color.B, color.A);
+
+
+        #region IDisposable
+
+        private bool disposedValue;
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    _deviceResources.Dispose();
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
+                // TODO: set large fields to null
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
+        // ~Game()
+        // {
+        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        //     Dispose(disposing: false);
+        // }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+
+        #endregion
     }
 }

@@ -10,10 +10,11 @@ using System.Threading.Tasks;
 
 namespace BasicGameLoop
 {
-    class GameForm : Form
+    internal class GameForm : Form
     {
         private const int WM_DISPLAYCHANGE = 0x007E;
         private const int WM_MENUCHAR = 0x0120;
+        private const int WM_MOVE = 0x0003;
         private const int MNC_CLOSE = 1;
 
         private readonly Game _game;
@@ -21,14 +22,14 @@ namespace BasicGameLoop
         private bool _inSizeMove;
         private bool _inSuspend;
         private bool _minimized;
-        private bool _fullscreen;
+        private bool _fullscreen; // TODO: Set _fullscreen to true if defaulting to fullscreen.
 
         public GameForm(Game game)
         {
             _game = game;
 
-            Text = game.AppName;
             ResizeRedraw = true;
+            Text = game.Title;
             Icon = new Icon("Icon1.ico");
             SetStyle(ControlStyles.Opaque, true);
             Size = _game.DefaultSize;
@@ -41,27 +42,22 @@ namespace BasicGameLoop
             _game.Initialize(Handle, Width, Height, Bounds);
 
             Application.Idle += Application_Idle;
+            SystemEvents.PowerModeChanged += SystemEvents_PowerModeChanged;
 
-            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            // Exit helper
+            _game.ExitGame = () => Application.Exit();
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (_inSizeMove && _game != null)
+            if (_inSizeMove)
             {
-                _game.Tick();
+                _game?.Tick();
             }
             else
             {
                 base.OnPaint(e);
             }
-        }
-
-        protected override void OnMove(EventArgs e)
-        {
-            _game?.OnWindowMoved();
-
-            base.OnMove(e);
         }
 
         protected override void OnSizeChanged(EventArgs e)
@@ -120,26 +116,6 @@ namespace BasicGameLoop
             base.OnDeactivate(e);
         }
 
-        private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
-        {
-            switch (e.Mode)
-            {
-                case PowerModes.Suspend:
-                    if (!_inSuspend)
-                        _game?.OnSuspending();
-                    _inSuspend = true;
-                    break;
-                case PowerModes.Resume:
-                    if (!_minimized)
-                    {
-                        if (_inSuspend)
-                            _game?.OnResuming();
-                        _inSuspend = false;
-                    }
-                    break;
-            }
-        }
-
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if (e.Alt && e.KeyCode == Keys.Return)
@@ -177,6 +153,10 @@ namespace BasicGameLoop
                     // to any mnemonic or accelerator key. Ignore so we don't produce an error beep.
                     m.Result = new IntPtr(MNC_CLOSE << 16);
                     return;
+                case WM_MOVE:
+                    _game?.OnWindowMoved();
+                    break;
+
             }
             base.WndProc(ref m);
         }
@@ -188,6 +168,27 @@ namespace BasicGameLoop
                 _game.Tick();
             }
         }
+
+        private void SystemEvents_PowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            switch (e.Mode)
+            {
+                case PowerModes.Suspend:
+                    if (!_inSuspend)
+                        _game?.OnSuspending();
+                    _inSuspend = true;
+                    return;
+                case PowerModes.Resume:
+                    if (!_minimized)
+                    {
+                        if (_inSuspend)
+                            _game?.OnResuming();
+                        _inSuspend = false;
+                    }
+                    return;
+            }
+        }
+
 
         [StructLayout(LayoutKind.Sequential)]
         public struct NativeMessage

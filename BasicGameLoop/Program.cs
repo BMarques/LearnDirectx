@@ -1,24 +1,22 @@
 using System.Numerics;
 
-namespace BasicGameLoop;
-
-static class Program
+namespace BasicGameLoop
 {
-    /// <summary>
-    ///  The main entry point for the application.
-    /// </summary>
-    [STAThread]
-    static void Main()
+    internal static class Program
     {
+        /// <summary>
+        ///  The main entry point for the application.
+        /// </summary>
+        [STAThread]
+        static void Main()
+        {
 #if !DEBUG
-        if (!Vector.IsHardwareAccelerated)
-            return;
+            if (!Vector.IsHardwareAccelerated)
+                return;
 #endif
 
-        Game game = new()
-        {
-            AppName = "Test"
-        };
-        Application.Run(new GameForm(game));
+            using var game = new Game("Direct3D 11 Game");
+            Application.Run(new GameForm(game));
+        }
     }
 }

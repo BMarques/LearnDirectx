@@ -41,6 +41,8 @@ namespace DX
             _targetElapsedTicks = TicksPerSecond / 60;
         }
 
+        public Action<StepTimer> Update { get; set; }
+
         // Get elapsed time since the previous Update call.
         public long ElapsedTicks => _elapsedTicks;
         public double ElapsedSeconds => TicksToSeconds(_elapsedTicks);
@@ -77,7 +79,7 @@ namespace DX
         }
 
         // Update timer state, calling the specified Update function the appropriate number of times.
-        public void Tick(Action<StepTimer> update)
+        public void Tick()
         {
             // Query the current time.
             long currentTime = Stopwatch.GetTimestamp();
@@ -124,7 +126,7 @@ namespace DX
                     _leftOverTicks -= _targetElapsedTicks;
                     _frameCount++;
 
-                    update(this);
+                    Update(this);
                 }
             }
             else
@@ -135,7 +137,7 @@ namespace DX
                 _leftOverTicks = 0;
                 _frameCount++;
 
-                update(this);
+                Update(this);
             }
 
             // Track the current framerate.

@@ -17,7 +17,7 @@ namespace DX
     /// <summary>
     /// Controls all the DirectX device resources.
     /// </summary>
-    class DeviceResources
+    class DeviceResources : IDisposable
     {
         // Direct3D objects.
         private IDXGIFactory2 _dxgiFactory;
@@ -53,6 +53,7 @@ namespace DX
 
         // The IDeviceNotify can be held directly as it owns the DeviceResources.
         private IDeviceNotify _deviceNotify;
+        private bool disposedValue;
 
         public DeviceResources(Format backBufferFormat = Format.B8G8R8A8_UNorm,
                                Format depthBufferFormat = Format.D32_Float,
@@ -183,6 +184,8 @@ namespace DX
                     out _d3dFeatureLevel,   // Returns feature level of device created.
                     out context             // Returns the device immediate context.
                     );
+
+                adapter.Dispose();
             }
 #if !DEBUG
             else
@@ -390,10 +393,7 @@ namespace DX
         /// </summary>
         public void HandleDeviceLost()
         {
-            if (_deviceNotify != null)
-            {
-                _deviceNotify.OnDeviceLost();
-            }
+            _deviceNotify?.OnDeviceLost();
 
             _d3dDepthStencilView.Dispose();
             _d3dRenderTargetView.Dispose();
@@ -425,7 +425,7 @@ namespace DX
         public void Present()
         {
             Result result;
-            if (_options.HasFlag(DeviceResourcesOptions.AllowTearing))
+            if ((_options & DeviceResourcesOptions.AllowTearing) != 0)
             {
                 // Recommended to always use tearing if supported when using a sync interval of 0.
                 result = _swapChain.Present(0, PresentFlags.AllowTearing);
@@ -497,17 +497,12 @@ namespace DX
                 var ax2 = _bounds.Right;
                 var ay2 = _bounds.Bottom;
 
-                // Get the rectangle bounds of the app window.
                 IDXGIOutput bestOutput = null;
                 int bestIntersectArea = -1;
 
-                for (var adapterIndex = 0;
-                    _dxgiFactory.EnumAdapters(adapterIndex, out IDXGIAdapter adapter).Success;
-                    ++adapterIndex)
+                foreach(var adapter in _dxgiFactory.EnumAdapters())
                 {
-                    for (var outputIndex = 0;
-                         adapter.EnumOutputs(outputIndex, out IDXGIOutput output).Success;
-                         ++outputIndex)
+                    foreach (var output in adapter.EnumOutputs())
                     {
                         // Get the rectangle bounds of current output.
                         OutputDescription desc = output.Description;
@@ -525,7 +520,7 @@ namespace DX
 
                 if (bestOutput != null)
                 {
-                    IDXGIOutput6 output6 = bestOutput.QueryInterfaceOrNull<IDXGIOutput6>();
+                    using IDXGIOutput6 output6 = bestOutput.QueryInterfaceOrNull<IDXGIOutput6>();
                     if (output6 != null)
                     {
                         if (output6.Description1.ColorSpace == ColorSpaceType.RgbFullG2084NoneP2020)
@@ -537,7 +532,7 @@ namespace DX
                 }
             }
 
-            if (_options.HasFlag(DeviceResourcesOptions.EnableHDR) && isDisplayHDR10)
+            if ((_options & DeviceResourcesOptions.EnableHDR) != 0 && isDisplayHDR10)
             {
                 switch (_backBufferFormat)
                 {
@@ -556,7 +551,7 @@ namespace DX
 
             _colorSpace = colorSpace;
 
-            IDXGISwapChain3 swapChain3 = _swapChain?.QueryInterfaceOrNull<IDXGISwapChain3>();
+            var swapChain3 = _swapChain?.QueryInterfaceOrNull<IDXGISwapChain3>();
             if (swapChain3 != null)
             {
                 var colorSpaceSupport = swapChain3.CheckColorSpaceSupport(colorSpace);
@@ -565,6 +560,7 @@ namespace DX
                     swapChain3.SetColorSpace1(colorSpace);
                 }
             }
+            swapChain3.Dispose();
         }
 
         // Performance events
@@ -576,27 +572,24 @@ namespace DX
         {
 #if DEBUG
             bool debugDXGI = false;
-            if (OperatingSystem.IsWindowsVersionAtLeast(6, 2)) // >= Windows 8.1
+            DXGI.DXGIGetDebugInterface1(out IDXGIInfoQueue dxgiInfoQueue);
+            if (dxgiInfoQueue != null)
             {
-                DXGI.DXGIGetDebugInterface1(out IDXGIInfoQueue dxgiInfoQueue);
-                if (dxgiInfoQueue != null)
+                debugDXGI = true;
+
+                DXGI.CreateDXGIFactory2(true, out _dxgiFactory);
+
+                dxgiInfoQueue.SetBreakOnSeverity(DXGI.DebugAll, InfoQueueMessageSeverity.Error, true);
+                dxgiInfoQueue.SetBreakOnSeverity(DXGI.DebugAll, InfoQueueMessageSeverity.Corruption, true);
+
+                var filter = new Vortice.DXGI.Debug.InfoQueueFilter
                 {
-                    debugDXGI = true;
-
-                    DXGI.CreateDXGIFactory2(true, out _dxgiFactory);
-
-                    dxgiInfoQueue.SetBreakOnSeverity(DXGI.DebugAll, InfoQueueMessageSeverity.Error, true);
-                    dxgiInfoQueue.SetBreakOnSeverity(DXGI.DebugAll, InfoQueueMessageSeverity.Corruption, true);
-
-                    var filter = new Vortice.DXGI.Debug.InfoQueueFilter
+                    DenyList = new Vortice.DXGI.Debug.InfoQueueFilterDescription
                     {
-                        DenyList = new Vortice.DXGI.Debug.InfoQueueFilterDescription
-                        {
-                            Ids = new[] { 80 } // IDXGIInfoQueue dxgiInfoQueue = 
-                        }
-                    };
-                    dxgiInfoQueue.AddStorageFilterEntries(DXGI.DebugDxgi, filter);
-                }
+                        Ids = new[] { 80 } // IDXGIInfoQueue dxgiInfoQueue = 
+                    }
+                };
+                dxgiInfoQueue.AddStorageFilterEntries(DXGI.DebugDxgi, filter);
             }
             if (!debugDXGI)
 #endif
@@ -633,7 +626,7 @@ namespace DX
 
             if (adapter == null)
             {
-                for (var adapterIndex = 0; _dxgiFactory.EnumAdapters1(0, out adapter).Success; adapterIndex++)
+                for (var adapterIndex = 0; adapterIndex < _dxgiFactory.EnumAdapters1().Count(); adapterIndex++)
                 {
                     AdapterDescription1 desc = adapter.Description1;
 
@@ -665,6 +658,49 @@ namespace DX
                                             int bx1, int by1, int bx2, int by2)
         {
             return Math.Max(01, Math.Min(ax2, bx2) - Math.Max(ax1, bx1)) * Math.Max(01, Math.Min(ay2, by2) - Math.Max(ay1, by1));
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    _d3dDepthStencilView.Dispose();
+                    _d3dRenderTargetView.Dispose();
+                    _renderTarget.Dispose();
+                    _depthStencil.Dispose();
+                    _swapChain.Dispose();
+                    _d3dContext.Dispose();
+                    _d3dAnnotation.Dispose();
+
+#if DEBUG
+                    var d3dDebug = _d3dDevice.QueryInterface<ID3D11Debug>();
+                    d3dDebug.ReportLiveDeviceObjects(ReportLiveDeviceObjectFlags.Summary);
+#endif
+
+                    _d3dDevice.Dispose();
+                    _dxgiFactory.Dispose();
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
+                // TODO: set large fields to null
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
+        // ~DeviceResources()
+        // {
+        //     // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        //     Dispose(disposing: false);
+        // }
+
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
         }
     }
 }
