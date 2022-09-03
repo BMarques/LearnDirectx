@@ -555,7 +555,7 @@ namespace DX
             if (swapChain3 != null)
             {
                 var colorSpaceSupport = swapChain3.CheckColorSpaceSupport(colorSpace);
-                if (colorSpaceSupport.HasFlag(SwapChainColorSpaceSupportFlags.Present))
+                if ((colorSpaceSupport & SwapChainColorSpaceSupportFlags.Present) != 0)
                 {
                     swapChain3.SetColorSpace1(colorSpace);
                 }
